@@ -34,15 +34,11 @@ jobs:
           echo "Menjalankan docker-compose.yml..."
           docker compose up -d
           
-          echo "Mengecek status MariaDB (Tunggu sampai siap 100%)..."
-          # Sistem pintar: Loop ini akan terus ngecek database, tidak pakai tebak waktu lagi!
-          until docker exec pterodactyl_db mysqladmin ping -u root -proot_password --silent; do
-            echo 'Database masih booting, nunggu 3 detik lagi...'
-            sleep 3
-          done
-          echo "DATABASE SUDAH SIAP! Lanjut setup Pterodactyl..."
+          echo "Menunggu MariaDB selesai inisialisasi awal (Jeda 60 detik)..."
+          # Kita pakai sleep karena MariaDB butuh waktu untuk 'fake start' dan 'real start'
+          sleep 60
           
-          # Setup Panel (Pasti tembus karena database udah ready)
+          echo "DATABASE SUDAH SIAP! Lanjut setup Pterodactyl..."
           docker exec pterodactyl_panel php artisan migrate --seed --force
           docker exec pterodactyl_panel php artisan view:clear
           docker exec pterodactyl_panel php artisan config:clear
@@ -51,6 +47,7 @@ jobs:
           docker exec pterodactyl_panel php artisan p:user:make --email="admin@admin.com" --username="admin" --name-first="Admin" --name-last="User" --password="admin123" --admin=1 || true
           
           echo "Pterodactyl Panel sukses dieksekusi!"
+
 
       - name: Install & Configure Wings
         run: |
