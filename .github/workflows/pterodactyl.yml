@@ -1,9 +1,9 @@
 name: Ptero Server Loop (Ngrok Version)
 
 on:
-  workflow_dispatch: # Pemicu manual pertama kali via tab Actions
+  workflow_dispatch:
   repository_dispatch:
-    types: [reboot_server] # Dipicu oleh API otomatis pada jam ke-5
+    types: [reboot_server]
 
 jobs:
   run-server:
@@ -30,73 +30,62 @@ jobs:
 
       - name: Install & Jalankan Ngrok
         run: |
-          # Membuat direktori keyrings untuk menghindari error 'No such file or directory'
           sudo mkdir -p /etc/apt/keyrings
-          
-          # Download dan registrasi repositori Ngrok resmi
           curl -s https://ngrok-agent.s3.amazonaws.com/ngrok.asc | sudo tee /etc/apt/keyrings/ngrok.asc >/dev/null
           echo "deb [signed-by=/etc/apt/keyrings/ngrok.asc] https://ngrok-agent.s3.amazonaws.com buster main" | sudo tee /etc/apt/sources.list.d/ngrok.list
           sudo apt-get update && sudo apt-get install ngrok
-          
-          # Autentikasi menggunakan token dari GitHub Secrets
-          ngrok config add-authtoken ${{ secrets.NGROK_TOKEN }}
-          
-          # Jalankan tunnel HTTP untuk port 80 di background
+          ngrok config add-authtoken ${{ secrets.NGROK_AUTH_TOKEN }}
           nohup ngrok http 80 --log=stdout > ngrok.log 2>&1 &
-          
-          echo "Ngrok berhasil dijalankan di background!"
           sleep 7
           echo "=== LINK URL NGROK KAMU ==="
-          curl -s http://127.0.0.1:4040/api/tunnels | grep -o '"public_url":"[^"]*' | grep -o 'http.*' || echo "Gagal mengambil URL, cek token Anda"
+          curl -s http://127.0.0.1:4040/api/tunnels | grep -o '"public_url":"[^"]*' | grep -o 'http.*' || echo "Gagal mengambil URL"
           echo "==========================="
 
       - name: Jalankan Pterodactyl & Wings (Auto Setup)
         run: |
           docker-compose up -d
           
-          # Logika jika server baru pertama kali dibuat (belum ada data backup)
           if [ ! -f backup.tar.gz ]; then
-            echo "Menunggu database siap diinisialisasi (30 detik)..."
-            sleep 30
+            echo "Mengecek kesiapan database MariaDB secara berkala..."
             
-            echo "Menjalankan migrasi struktur tabel database..."
+            # Ini perintah krusial untuk menahan skrip sampai database benar-benar aktif
+            until docker-compose exec -T database mysqladmin ping -h "127.0.0.1" -u pterodactyl -prahasia_ptero --silent; do
+                echo "Database belum siap merespons, menunggu 5 detik..."
+                sleep 5
+            done
+            
+            echo "Database terdeteksi aktif! Memberi jeda stabilisasi 10 detik..."
+            sleep 10
+            
+            echo "Memulai migrasi struktur database..."
             docker-compose exec -T panel php artisan migrate --seed --force
             
-            echo "Membuat user Admin utama secara otomatis..."
+            echo "Membuat akun Admin otomatis..."
             docker-compose exec -T panel php artisan ptero:user --email="admin@gmail.com" --username="admin" --name-first="Admin" --name-last="Ptero" --password="PasswordAdmin123!" --admin=1
             
-            echo "Proses instalasi awal selesai dengan sukses!"
+            echo "Instalasi awal sukses besar!"
           else
-            echo "Data backup terdeteksi. Melewati instalasi awal dan memulihkan sesi sebelumnya."
-            echo "Menunggu container stabil..."
+            echo "Backup ditemukan, memulihkan data lama."
             sleep 15
           fi
-          
-          echo "Pterodactyl Panel dan Wings kini aktif!"
 
       - name: Server Aktif (Timer 5 Jam)
         run: |
-          echo "Server sedang berjalan. Menahan runner Actions selama 5 jam..."
-          sleep 18000 # 5 jam (dalam detik)
+          echo "Server online. Menahan runner selama 5 jam..."
+          sleep 18000
 
       - name: Auto Backup Data
         run: |
-          echo "Waktu habis. Menghentikan container secara aman..."
           docker-compose down
-          
-          echo "Mengompresi folder data menjadi arsip backup..."
           tar -czvf backup.tar.gz data/
-          
-          echo "Mendorong file backup terbaru ke repositori GitHub..."
           git config --global user.name "GitHub Actions Bot"
           git config --global user.email "actions@github.com"
           git add backup.tar.gz
-          git commit -m "Auto-backup server data [skip ci]" || echo "Tidak ada perubahan data yang disimpan."
+          git commit -m "Auto-backup server data [skip ci]" || echo "Tidak ada perubahan"
           git push origin main
 
       - name: Auto Up (Picu Loop Baru)
         run: |
-          echo "Mengirim instruksi API untuk memicu runner workflow baru..."
           curl -X POST https://api.github.com/repos/${{ github.repository }}/dispatches \
           -H "Accept: application/vnd.github.v3+json" \
           -H "Authorization: token ${{ secrets.GH_PAT }}" \
