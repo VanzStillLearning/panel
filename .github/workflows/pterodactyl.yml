@@ -38,8 +38,7 @@ jobs:
           echo "JEDA PANJANG: Menunggu MariaDB benar-benar siap (45 detik)..."
           sleep 45 
           
-          echo "Generate App Key dan Setup Database..."
-          docker exec pterodactyl_panel php artisan key:generate --force
+          echo "Setup Database..."
           docker exec pterodactyl_panel php artisan migrate --seed --force
           
           echo "Membersihkan Cache Aplikasi..."
