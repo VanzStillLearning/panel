@@ -8,6 +8,7 @@ services:
       - "80:80"
     environment:
       - APP_URL=https://my-ptero-panel.loca.lt
+      - APP_KEY=base64:xd59B6s/R1jH4V7vX5r2K8x3A0b9T2p7R6q3M5s1V4A=
       - DB_HOST=mariadb
       - DB_PORT=3306
       - DB_DATABASE=panel
