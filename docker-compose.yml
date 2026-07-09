@@ -7,13 +7,14 @@ services:
     ports:
       - "80:80"
     environment:
-      - APP_URL=https://my-ptero-panel.loca.lt
+      - APP_URL=${APP_URL} # <--- Akan diisi URL Ngrok otomatis oleh script
       - APP_KEY=base64:xd59B6s/R1jH4V7vX5r2K8x3A0b9T2p7R6q3M5s1V4A=
-      - DB_HOST=database
+      - DB_HOST=mariadb
       - DB_PORT=3306
       - DB_DATABASE=panel
       - DB_USERNAME=pterodactyl
       - DB_PASSWORD=pterodactyl_password
+      - DB_SSL_MODE=disabled # <--- INI OBAT PENAWAR ERROR SSL-NYA!
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - APP_ENV=production
@@ -22,14 +23,13 @@ services:
       - SESSION_DRIVER=redis
       - QUEUE_CONNECTION=redis
     depends_on:
-      - database
+      - mariadb
       - redis
     restart: always
 
-  database:
-    image: mysql:8.0
+  mariadb:
+    image: mariadb:10.11
     container_name: pterodactyl_db
-    command: --default-authentication-plugin=mysql_native_password
     environment:
       - MYSQL_DATABASE=panel
       - MYSQL_USER=pterodactyl
@@ -41,4 +41,3 @@ services:
     image: redis:alpine
     container_name: pterodactyl_redis
     restart: always
-    
