@@ -12,33 +12,49 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v3
 
-      - name: Setup Localtunnel (Expose IP)
+      - name: Setup Ngrok (Expose IP)
+        env:
+          NGROK_TOKEN: ${{ secrets.NGROK_TOKEN }} 
         run: |
-          echo "Menginstal Node.js dan Localtunnel..."
-          sudo apt-get install -y nodejs npm
-          sudo npm install -g localtunnel
+          if [ -z "$NGROK_TOKEN" ]; then
+            echo "ERROR: NGROK_TOKEN belum dipasang di GitHub Secrets! Wajib dipasang!"
+            exit 1
+          fi
           
-          echo "Menjalankan Localtunnel di background..."
-          lt --port 80 --subdomain my-ptero-panel > tunnel.log 2>&1 &
+          echo "Menginstal Ngrok..."
+          wget https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-linux-amd64.tgz
+          tar -xvzf ngrok-v3-stable-linux-amd64.tgz
+          sudo mv ngrok /usr/local/bin/
           
-          echo "Menunggu Localtunnel aktif..."
-          sleep 10
+          echo "Autentikasi Ngrok..."
+          ngrok config add-authtoken $NGROK_TOKEN
           
-          echo "======================================"
-          echo "LINK PTERODACTYL PANEL KAMU:"
-          cat tunnel.log
-          echo "======================================"
+          echo "Menjalankan Ngrok..."
+          ngrok http 80 --log=stdout > ngrok.log &
+          sleep 8 # Tunggu ngrok nyambung ke server
+          
+          # Mengambil URL dinamis Ngrok
+          export DYNAMIC_URL=$(curl -s localhost:4040/api/tunnels | jq -r '.tunnels[0].public_url')
+          
+          if [ -z "$DYNAMIC_URL" ] || [ "$DYNAMIC_URL" == "null" ]; then
+            echo "Gagal mendapatkan URL Ngrok! Cek token ngrok kamu."
+            cat ngrok.log
+            exit 1
+          fi
+          
+          echo "Berhasil! URL Panel: $DYNAMIC_URL"
+          # Menyimpan URL ke environment variable buat dipakai docker-compose
+          echo "APP_URL=$DYNAMIC_URL" >> $GITHUB_ENV
 
-      - name: Install Pterodactyl Panel & Tunggu Database Siap
+      - name: Install Pterodactyl Panel
         run: |
-          echo "Menjalankan docker-compose.yml..."
+          echo "Menjalankan docker-compose.yml dengan URL: $APP_URL"
           docker compose up -d
           
-          echo "Menunggu MariaDB selesai inisialisasi awal (Jeda 60 detik)..."
-          # Kita pakai sleep karena MariaDB butuh waktu untuk 'fake start' dan 'real start'
+          echo "Menunggu MariaDB inisialisasi (60 detik)..."
           sleep 60
           
-          echo "DATABASE SUDAH SIAP! Lanjut setup Pterodactyl..."
+          echo "Mengeksekusi Setup Database (SSL Disabled)..."
           docker exec pterodactyl_panel php artisan migrate --seed --force
           docker exec pterodactyl_panel php artisan view:clear
           docker exec pterodactyl_panel php artisan config:clear
@@ -48,29 +64,26 @@ jobs:
           
           echo "Pterodactyl Panel sukses dieksekusi!"
 
-
       - name: Install & Configure Wings
         run: |
           echo "Mulai menginstal Wings..."
           sudo mkdir -p /etc/pterodactyl
-          
           curl -L -o /usr/local/bin/wings "https://github.com/pterodactyl/wings/releases/latest/download/wings_linux_amd64"
           sudo chmod u+x /usr/local/bin/wings
-          
           echo "${{ secrets.WINGS_CONFIG }}" | sudo tee /etc/pterodactyl/config.yml
-          
           sudo /usr/local/bin/wings &
           echo "Wings berjalan di background!"
 
       - name: Keep-Alive & Wait for 5 Hours
         run: |
-          echo "Server online..."
+          echo "================================================="
+          echo "Server sedang online! Buka link Ngrok lu di atas."
+          echo "================================================="
           sleep 18000 
 
       - name: Auto Backup
         run: |
           sudo tar -czvf backup-server.tar.gz /var/lib/pterodactyl/volumes || true
-          echo "Backup selesai!"
 
       - name: Auto Up Trigger (Restart)
         env:
