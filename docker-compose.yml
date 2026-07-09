@@ -17,6 +17,12 @@ services:
       - ./data/db:/var/lib/mysql
     networks:
       - ptero-network
+    # --- METODE UTAMA (HEALTHCHECK) ---
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-prahasia_root"]
+      timeout: 5s
+      retries: 10
+      interval: 5s
 
   panel:
     image: ghcr.io/pterodactyl/panel:latest
@@ -40,7 +46,8 @@ services:
     networks:
       - ptero-network
     depends_on:
-      - database
+      database:
+        condition: service_healthy # Panel baru akan jalan setelah database berstatus HEALTHY
 
   wings:
     image: ghcr.io/pterodactyl/wings:latest
