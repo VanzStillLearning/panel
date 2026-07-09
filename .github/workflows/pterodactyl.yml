@@ -1,9 +1,9 @@
 name: Pterodactyl CI/CD Server
 
 on:
-  workflow_dispatch: # Bisa dijalankan manual
+  workflow_dispatch: 
   repository_dispatch:
-    types: [auto-restart] # Dijalankan oleh trigger Auto-Up
+    types: [auto-restart] 
 
 jobs:
   run-server:
@@ -12,27 +12,37 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v3
 
-      - name: Setup Cloudflare Tunnel (Expose IP)
+      - name: Setup Localtunnel (Expose IP)
         run: |
-          # Menggunakan Cloudflared untuk mengekspos Panel (Port 80) dan Wings (Port 8080/2022)
-          curl -L --output cloudflared.deb https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb
-          sudo dpkg -i cloudflared.deb
-          # Membutuhkan token dari rahasia GitHub (Masukkan di GitHub Secrets)
-          sudo cloudflared service install ${{ secrets.CF_TUNNEL_TOKEN }} &
-          sleep 5
+          echo "Menginstal Node.js dan Localtunnel..."
+          sudo apt-get install -y nodejs npm
+          sudo npm install -g localtunnel
+          
+          echo "Menjalankan Localtunnel di background..."
+          # Menggunakan subdomain khusus agar cocok dengan docker-compose.yml
+          lt --port 80 --subdomain my-ptero-panel > tunnel.log 2>&1 &
+          
+          echo "Menunggu Localtunnel aktif..."
+          sleep 10
+          
+          echo "======================================"
+          echo "LINK PTERODACTYL PANEL KAMU:"
+          cat tunnel.log
+          echo "======================================"
 
       - name: Install Pterodactyl Panel (Dockerized)
         run: |
-          # Menjalankan docker-compose.yml yang ada di root repository
+          echo "Menjalankan docker-compose.yml..."
           docker compose up -d
-          echo "Pterodactyl Panel berhasil dijalankan via Docker!"
           
-          # JEDA KHUSUS: Docker butuh waktu beberapa detik untuk membuat database
+          # Docker butuh waktu beberapa detik untuk membuat database
           sleep 15 
           
-          # Setup awal Panel (Hanya berlaku jika database masih kosong)
+          # Setup awal Panel
           docker exec pterodactyl_panel php artisan key:generate --force || true
           docker exec pterodactyl_panel php artisan migrate --seed --force || true
+          
+          echo "Pterodactyl Panel berhasil dijalankan via Docker!"
 
       - name: Install & Configure Wings
         run: |
