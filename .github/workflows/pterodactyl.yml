@@ -1,9 +1,9 @@
-name: Pterodactyl CI/CD Server
+name: Ptero Server Loop
 
 on:
-  workflow_dispatch: 
+  workflow_dispatch: # Untuk memicu secara manual pertama kali
   repository_dispatch:
-    types: [auto-restart] 
+    types: [reboot_server] # Untuk dipicu oleh API pada jam ke-5
 
 jobs:
   run-server:
@@ -11,85 +11,64 @@ jobs:
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v3
+        with:
+          token: ${{ secrets.GH_PAT }}
 
-      - name: Setup Ngrok (Expose IP)
-        env:
-          NGROK_TOKEN: ${{ secrets.NGROK_TOKEN }} 
+      - name: Setup Docker & Tar
         run: |
-          if [ -z "$NGROK_TOKEN" ]; then
-            echo "ERROR: NGROK_TOKEN belum dipasang di GitHub Secrets! Wajib dipasang!"
-            exit 1
+          sudo apt-get update
+          sudo apt-get install -y docker-compose tar wget
+
+      - name: Ekstrak Backup (Jika Ada)
+        run: |
+          if [ -f backup.tar.gz ]; then
+            echo "Menemukan file backup, mengekstrak data..."
+            tar -xzvf backup.tar.gz
+          else
+            echo "Tidak ada backup, memulai server baru."
           fi
-          
-          echo "Menginstal Ngrok..."
-          wget https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-linux-amd64.tgz
-          tar -xvzf ngrok-v3-stable-linux-amd64.tgz
-          sudo mv ngrok /usr/local/bin/
-          
-          echo "Autentikasi Ngrok..."
-          ngrok config add-authtoken $NGROK_TOKEN
-          
-          echo "Menjalankan Ngrok..."
-          ngrok http 80 --log=stdout > ngrok.log &
-          sleep 8 # Tunggu ngrok nyambung ke server
-          
-          # Mengambil URL dinamis Ngrok
-          export DYNAMIC_URL=$(curl -s localhost:4040/api/tunnels | jq -r '.tunnels[0].public_url')
-          
-          if [ -z "$DYNAMIC_URL" ] || [ "$DYNAMIC_URL" == "null" ]; then
-            echo "Gagal mendapatkan URL Ngrok! Cek token ngrok kamu."
-            cat ngrok.log
-            exit 1
-          fi
-          
-          echo "Berhasil! URL Panel: $DYNAMIC_URL"
-          # Menyimpan URL ke environment variable buat dipakai docker-compose
-          echo "APP_URL=$DYNAMIC_URL" >> $GITHUB_ENV
 
-      - name: Install Pterodactyl Panel
+      - name: Install & Jalankan Playit.gg
         run: |
-          echo "Menjalankan docker-compose.yml dengan URL: $APP_URL"
-          docker compose up -d
-          
-          echo "Menunggu MariaDB inisialisasi (60 detik)..."
-          sleep 60
-          
-          echo "Mengeksekusi Setup Database (SSL Disabled)..."
-          docker exec pterodactyl_panel php artisan migrate --seed --force
-          docker exec pterodactyl_panel php artisan view:clear
-          docker exec pterodactyl_panel php artisan config:clear
-          
-          echo "Membuat Akun Admin..."
-          docker exec pterodactyl_panel php artisan p:user:make --email="admin@admin.com" --username="admin" --name-first="Admin" --name-last="User" --password="admin123" --admin=1 || true
-          
-          echo "Pterodactyl Panel sukses dieksekusi!"
+          curl -SsL https://playit-cloud.github.io/ppa/key.gpg | sudo apt-key add -
+          sudo curl -SsL -o /etc/apt/sources.list.d/playit-cloud.list https://playit-cloud.github.io/ppa/playit-cloud.list
+          sudo apt update
+          sudo apt install playit
+          # Menjalankan Playit di background
+          playit setup --secret ${{ secrets.PLAYIT_SECRET }}
+          nohup playit run > playit.log 2>&1 &
+          echo "Playit.gg berjalan di background."
 
-      - name: Install & Configure Wings
+      - name: Jalankan Pterodactyl & Wings (Auto Install)
         run: |
-          echo "Mulai menginstal Wings..."
-          sudo mkdir -p /etc/pterodactyl
-          curl -L -o /usr/local/bin/wings "https://github.com/pterodactyl/wings/releases/latest/download/wings_linux_amd64"
-          sudo chmod u+x /usr/local/bin/wings
-          echo "${{ secrets.WINGS_CONFIG }}" | sudo tee /etc/pterodactyl/config.yml
-          sudo /usr/local/bin/wings &
-          echo "Wings berjalan di background!"
+          docker-compose up -d
+          echo "Pterodactyl Panel dan Wings berhasil dijalankan!"
 
-      - name: Keep-Alive & Wait for 5 Hours
+      - name: Server Aktif (Timer 5 Jam)
         run: |
-          echo "================================================="
-          echo "Server sedang online! Buka link Ngrok lu di atas."
-          echo "================================================="
-          sleep 18000 
+          echo "Server sedang berjalan. Menahan runner selama 5 jam..."
+          sleep 18000 # 5 jam dalam hitungan detik
 
-      - name: Auto Backup
+      - name: Auto Backup Data
         run: |
-          sudo tar -czvf backup-server.tar.gz /var/lib/pterodactyl/volumes || true
+          echo "Batas waktu hampir habis. Menghentikan server..."
+          docker-compose down
+          
+          echo "Mengompres data panel dan wings..."
+          tar -czvf backup.tar.gz data/
+          
+          echo "Mendorong backup ke repositori..."
+          git config --global user.name "GitHub Actions Bot"
+          git config --global user.email "actions@github.com"
+          git add backup.tar.gz
+          git commit -m "Auto-backup server data [skip ci]" || echo "Tidak ada perubahan data"
+          git push origin main
 
-      - name: Auto Up Trigger (Restart)
-        env:
-          GH_TOKEN: ${{ secrets.PAT_TOKEN }}
+      - name: Auto Up (Picu Workflow Berikutnya)
         run: |
-          gh api -X POST /repos/${{ github.repository }}/dispatches \
-            -H "Accept: application/vnd.github.v3+json" \
-            -f event_type=auto-restart
-            
+          echo "Memicu runner baru..."
+          curl -X POST https://api.github.com/repos/${{ github.repository }}/dispatches \
+          -H "Accept: application/vnd.github.v3+json" \
+          -H "Authorization: token ${{ secrets.GH_PAT }}" \
+          -d '{"event_type": "reboot_server"}'
+          
