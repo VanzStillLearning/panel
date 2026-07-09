@@ -1,6 +1,23 @@
 version: '3.8'
 
+networks:
+  ptero-network:
+    driver: bridge
+
 services:
+  database:
+    image: mariadb:10.5
+    command: --allow-no-password
+    environment:
+      - MYSQL_ROOT_PASSWORD=rahasia_root
+      - MYSQL_DATABASE=panel
+      - MYSQL_USER=pterodactyl
+      - MYSQL_PASSWORD=rahasia_ptero
+    volumes:
+      - ./data/db:/var/lib/mysql
+    networks:
+      - ptero-network
+
   panel:
     image: ghcr.io/pterodactyl/panel:latest
     ports:
@@ -9,7 +26,6 @@ services:
       - APP_URL=http://localhost
       - APP_ENV=production
       - APP_ENVIRONMENT_ONLY=false
-      # APP_KEY wajib statis agar enkripsi database tidak rusak saat runner di-reboot setiap 5 jam
       - APP_KEY=base64:d3B6NWhwYm9wY2NteXN0ZXJ5a2V5MTIzNDU2Nzg5MDA=
       - DB_HOST=database
       - DB_PORT=3306
@@ -21,19 +37,10 @@ services:
       - QUEUE_CONNECTION=database
     volumes:
       - ./data/panel:/app/var/
+    networks:
+      - ptero-network
     depends_on:
       - database
-  
-  database:
-    image: mariadb:10.5
-    command: --allow-no-password
-    environment:
-      - MYSQL_ROOT_PASSWORD=rahasia_root
-      - MYSQL_DATABASE=panel
-      - MYSQL_USER=pterodactyl
-      - MYSQL_PASSWORD=rahasia_ptero
-    volumes:
-      - ./data/db:/var/lib/mysql
 
   wings:
     image: ghcr.io/pterodactyl/wings:latest
@@ -43,4 +50,6 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ./data/wings:/var/lib/pterodactyl
+    networks:
+      - ptero-network
       
