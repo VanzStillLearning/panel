@@ -35,14 +35,21 @@ jobs:
           echo "Menjalankan docker-compose.yml..."
           docker compose up -d
           
-          # Docker butuh waktu beberapa detik untuk membuat database
-          sleep 15 
+          echo "JEDA PANJANG: Menunggu MariaDB benar-benar siap (45 detik)..."
+          sleep 45 
           
-          # Setup awal Panel
-          docker exec pterodactyl_panel php artisan key:generate --force || true
-          docker exec pterodactyl_panel php artisan migrate --seed --force || true
+          echo "Generate App Key dan Setup Database..."
+          docker exec pterodactyl_panel php artisan key:generate --force
+          docker exec pterodactyl_panel php artisan migrate --seed --force
           
-          echo "Pterodactyl Panel berhasil dijalankan via Docker!"
+          echo "Membersihkan Cache Aplikasi..."
+          docker exec pterodactyl_panel php artisan view:clear
+          docker exec pterodactyl_panel php artisan config:clear
+          
+          echo "Membuat Akun Admin..."
+          docker exec pterodactyl_panel php artisan p:user:make --email="admin@admin.com" --username="admin" --name-first="Admin" --name-last="User" --password="admin123" --admin=1 || true
+          
+          echo "Pterodactyl Panel siap!"
 
       - name: Install & Configure Wings
         run: |
@@ -71,7 +78,7 @@ jobs:
           echo "Memulai proses backup data server..."
           # Mengkompresi folder data server game
           sudo tar -czvf backup-server.tar.gz /var/lib/pterodactyl/volumes || true
-          echo "Backup selesai! (Pastikan menambahkan script upload ke cloud di baris ini jika diperlukan)"
+          echo "Backup selesai!"
 
       - name: Auto Up Trigger (Restart Workflow)
         env:
