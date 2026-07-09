@@ -1,4 +1,5 @@
 version: '3.8'
+
 services:
   panel:
     image: ghcr.io/pterodactyl/panel:latest
@@ -6,16 +7,31 @@ services:
       - "80:80"
     environment:
       - APP_URL=http://localhost
+      - APP_ENV=production
+      - APP_ENVIRONMENT_ONLY=false
+      # APP_KEY wajib statis agar enkripsi database tidak rusak saat runner di-reboot setiap 5 jam
+      - APP_KEY=base64:d3B6NWhwYm9wY2NteXN0ZXJ5a2V5MTIzNDU2Nzg5MDA=
       - DB_HOST=database
-      - DB_PASSWORD=rahasia
+      - DB_PORT=3306
+      - DB_DATABASE=panel
+      - DB_USERNAME=pterodactyl
+      - DB_PASSWORD=rahasia_ptero
+      - CACHE_DRIVER=file
+      - SESSION_DRIVER=file
+      - QUEUE_CONNECTION=database
     volumes:
       - ./data/panel:/app/var/
+    depends_on:
+      - database
   
   database:
     image: mariadb:10.5
+    command: --allow-no-password
     environment:
-      - MYSQL_ROOT_PASSWORD=rahasia
+      - MYSQL_ROOT_PASSWORD=rahasia_root
       - MYSQL_DATABASE=panel
+      - MYSQL_USER=pterodactyl
+      - MYSQL_PASSWORD=rahasia_ptero
     volumes:
       - ./data/db:/var/lib/mysql
 
