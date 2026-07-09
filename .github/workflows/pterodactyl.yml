@@ -19,7 +19,6 @@ jobs:
           sudo npm install -g localtunnel
           
           echo "Menjalankan Localtunnel di background..."
-          # Menggunakan subdomain khusus agar cocok dengan docker-compose.yml
           lt --port 80 --subdomain my-ptero-panel > tunnel.log 2>&1 &
           
           echo "Menunggu Localtunnel aktif..."
@@ -30,61 +29,56 @@ jobs:
           cat tunnel.log
           echo "======================================"
 
-      - name: Install Pterodactyl Panel (Dockerized)
+      - name: Install Pterodactyl Panel & Tunggu Database Siap
         run: |
           echo "Menjalankan docker-compose.yml..."
           docker compose up -d
           
-          echo "JEDA PANJANG: Menunggu MariaDB benar-benar siap (45 detik)..."
-          sleep 45 
+          echo "Mengecek status MariaDB (Tunggu sampai siap 100%)..."
+          # Sistem pintar: Loop ini akan terus ngecek database, tidak pakai tebak waktu lagi!
+          until docker exec pterodactyl_db mysqladmin ping -u root -proot_password --silent; do
+            echo 'Database masih booting, nunggu 3 detik lagi...'
+            sleep 3
+          done
+          echo "DATABASE SUDAH SIAP! Lanjut setup Pterodactyl..."
           
-          echo "Setup Database..."
+          # Setup Panel (Pasti tembus karena database udah ready)
           docker exec pterodactyl_panel php artisan migrate --seed --force
-          
-          echo "Membersihkan Cache Aplikasi..."
           docker exec pterodactyl_panel php artisan view:clear
           docker exec pterodactyl_panel php artisan config:clear
           
           echo "Membuat Akun Admin..."
           docker exec pterodactyl_panel php artisan p:user:make --email="admin@admin.com" --username="admin" --name-first="Admin" --name-last="User" --password="admin123" --admin=1 || true
           
-          echo "Pterodactyl Panel siap!"
+          echo "Pterodactyl Panel sukses dieksekusi!"
 
       - name: Install & Configure Wings
         run: |
           echo "Mulai menginstal Wings..."
           sudo mkdir -p /etc/pterodactyl
           
-          # Download Wings
           curl -L -o /usr/local/bin/wings "https://github.com/pterodactyl/wings/releases/latest/download/wings_linux_amd64"
           sudo chmod u+x /usr/local/bin/wings
           
-          # Memasukkan konfigurasi Wings dari GitHub Secrets
           echo "${{ secrets.WINGS_CONFIG }}" | sudo tee /etc/pterodactyl/config.yml
           
-          # Menjalankan Wings di background
           sudo /usr/local/bin/wings &
           echo "Wings berjalan di background!"
 
       - name: Keep-Alive & Wait for 5 Hours
         run: |
-          echo "Server sedang online. Menunggu 5 jam sebelum siklus backup dan restart..."
-          # 5 jam = 18000 detik.
+          echo "Server online..."
           sleep 18000 
 
-      - name: Auto Backup (Setelah 5 Jam)
+      - name: Auto Backup
         run: |
-          echo "Memulai proses backup data server..."
-          # Mengkompresi folder data server game
           sudo tar -czvf backup-server.tar.gz /var/lib/pterodactyl/volumes || true
           echo "Backup selesai!"
 
-      - name: Auto Up Trigger (Restart Workflow)
+      - name: Auto Up Trigger (Restart)
         env:
           GH_TOKEN: ${{ secrets.PAT_TOKEN }}
         run: |
-          echo "Men-trigger workflow baru sebelum runner ini mati..."
-          # Menggunakan GitHub CLI untuk mengirim sinyal auto-restart
           gh api -X POST /repos/${{ github.repository }}/dispatches \
             -H "Accept: application/vnd.github.v3+json" \
             -f event_type=auto-restart
