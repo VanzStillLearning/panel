@@ -30,23 +30,26 @@ jobs:
 
       - name: Install & Jalankan Ngrok
         run: |
-          # Download dan install Ngrok resmi
-          curl -s https://ngrok-agent.s3.amazonaws.com/ngrok.asc | sudo tee /etc/apt/trusted.gpg.dev/ngrok.asc >/dev/null
-          echo "deb [signed-by=/etc/apt/trusted.gpg.dev/ngrok.asc] https://ngrok-agent.s3.amazonaws.com buster main" | sudo tee /etc/apt/sources.list.d/ngrok.list
+          # Membuat direktori keyrings jika belum ada
+          sudo mkdir -p /etc/apt/keyrings
+          
+          # Download dan install Ngrok resmi menggunakan lokasi keyring standar
+          curl -s https://ngrok-agent.s3.amazonaws.com/ngrok.asc | sudo tee /etc/apt/keyrings/ngrok.asc >/dev/null
+          echo "deb [signed-by=/etc/apt/keyrings/ngrok.asc] https://ngrok-agent.s3.amazonaws.com buster main" | sudo tee /etc/apt/sources.list.d/ngrok.list
           sudo apt-get update && sudo apt-get install ngrok
           
           # Autentikasi token
           ngrok config add-authtoken ${{ secrets.NGROK_TOKEN }}
           
           # Menjalankan HTTP tunnel untuk Panel Pterodactyl (Port 80) di background
-          # Catatan: Jika butuh membuka port Wings (8080/2022), akun Ngrok gratisan terbatas hanya 1 tunnel aktif secara bersamaan.
           nohup ngrok http 80 --log=stdout > ngrok.log 2>&1 &
           
           echo "Ngrok berhasil dijalankan di background!"
           sleep 5
           echo "=== LINK URL NGROK KAMU ==="
-          curl -s http://127.0.0.1:4040/api/tunnels | grep -o '"public_url":"[^"]*' | grep -o 'http.*'
+          curl -s http://127.0.0.1:4040/api/tunnels | grep -o '"public_url":"[^"]*' | grep -o 'http.*' || echo "Gagal mengambil URL, pastikan token valid"
           echo "==========================="
+          
 
       - name: Jalankan Pterodactyl & Wings
         run: |
