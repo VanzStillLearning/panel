@@ -1,9 +1,9 @@
-name: Ptero Server Loop
+name: Ptero Server Loop (Ngrok Version)
 
 on:
-  workflow_dispatch: # Untuk memicu secara manual pertama kali
+  workflow_dispatch: # Pemicu manual pertama kali
   repository_dispatch:
-    types: [reboot_server] # Untuk dipicu oleh API pada jam ke-5
+    types: [reboot_server] # Dipicu oleh API pada jam ke-5
 
 jobs:
   run-server:
@@ -17,7 +17,7 @@ jobs:
       - name: Setup Docker & Tar
         run: |
           sudo apt-get update
-          sudo apt-get install -y docker-compose tar wget
+          sudo apt-get install -y docker-compose tar wget unzip
 
       - name: Ekstrak Backup (Jika Ada)
         run: |
@@ -28,18 +28,27 @@ jobs:
             echo "Tidak ada backup, memulai server baru."
           fi
 
-      - name: Install & Jalankan Playit.gg
+      - name: Install & Jalankan Ngrok
         run: |
-          curl -SsL https://playit-cloud.github.io/ppa/key.gpg | sudo apt-key add -
-          sudo curl -SsL -o /etc/apt/sources.list.d/playit-cloud.list https://playit-cloud.github.io/ppa/playit-cloud.list
-          sudo apt update
-          sudo apt install playit
-          # Menjalankan Playit di background
-          playit setup --secret ${{ secrets.PLAYIT_SECRET }}
-          nohup playit run > playit.log 2>&1 &
-          echo "Playit.gg berjalan di background."
+          # Download dan install Ngrok resmi
+          curl -s https://ngrok-agent.s3.amazonaws.com/ngrok.asc | sudo tee /etc/apt/trusted.gpg.dev/ngrok.asc >/dev/null
+          echo "deb [signed-by=/etc/apt/trusted.gpg.dev/ngrok.asc] https://ngrok-agent.s3.amazonaws.com buster main" | sudo tee /etc/apt/sources.list.d/ngrok.list
+          sudo apt-get update && sudo apt-get install ngrok
+          
+          # Autentikasi token
+          ngrok config add-authtoken ${{ secrets.NGROK_TOKEN }}
+          
+          # Menjalankan HTTP tunnel untuk Panel Pterodactyl (Port 80) di background
+          # Catatan: Jika butuh membuka port Wings (8080/2022), akun Ngrok gratisan terbatas hanya 1 tunnel aktif secara bersamaan.
+          nohup ngrok http 80 --log=stdout > ngrok.log 2>&1 &
+          
+          echo "Ngrok berhasil dijalankan di background!"
+          sleep 5
+          echo "=== LINK URL NGROK KAMU ==="
+          curl -s http://127.0.0.1:4040/api/tunnels | grep -o '"public_url":"[^"]*' | grep -o 'http.*'
+          echo "==========================="
 
-      - name: Jalankan Pterodactyl & Wings (Auto Install)
+      - name: Jalankan Pterodactyl & Wings
         run: |
           docker-compose up -d
           echo "Pterodactyl Panel dan Wings berhasil dijalankan!"
@@ -47,7 +56,7 @@ jobs:
       - name: Server Aktif (Timer 5 Jam)
         run: |
           echo "Server sedang berjalan. Menahan runner selama 5 jam..."
-          sleep 18000 # 5 jam dalam hitungan detik
+          sleep 18000 # 5 jam (dalam hitungan detik)
 
       - name: Auto Backup Data
         run: |
