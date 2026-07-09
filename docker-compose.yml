@@ -27,7 +27,7 @@ services:
     restart: always
 
   mariadb:
-    image: mariadb:10.5
+    image: mariadb:10.11
     container_name: pterodactyl_db
     environment:
       - MYSQL_DATABASE=panel
