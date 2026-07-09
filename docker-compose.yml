@@ -1,43 +1,30 @@
 version: '3.8'
-
 services:
   panel:
     image: ghcr.io/pterodactyl/panel:latest
-    container_name: pterodactyl_panel
     ports:
       - "80:80"
     environment:
-      - APP_URL=${APP_URL} # <--- Akan diisi URL Ngrok otomatis oleh script
-      - APP_KEY=base64:xd59B6s/R1jH4V7vX5r2K8x3A0b9T2p7R6q3M5s1V4A=
-      - DB_HOST=mariadb
-      - DB_PORT=3306
-      - DB_DATABASE=panel
-      - DB_USERNAME=pterodactyl
-      - DB_PASSWORD=pterodactyl_password
-      - DB_SSL_MODE=disabled # <--- INI OBAT PENAWAR ERROR SSL-NYA!
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-      - APP_ENV=production
-      - APP_ENVIRONMENT_ONLY=false
-      - CACHE_DRIVER=redis
-      - SESSION_DRIVER=redis
-      - QUEUE_CONNECTION=redis
-    depends_on:
-      - mariadb
-      - redis
-    restart: always
-
-  mariadb:
-    image: mariadb:10.11
-    container_name: pterodactyl_db
+      - APP_URL=http://localhost
+      - DB_HOST=database
+      - DB_PASSWORD=rahasia
+    volumes:
+      - ./data/panel:/app/var/
+  
+  database:
+    image: mariadb:10.5
     environment:
+      - MYSQL_ROOT_PASSWORD=rahasia
       - MYSQL_DATABASE=panel
-      - MYSQL_USER=pterodactyl
-      - MYSQL_PASSWORD=pterodactyl_password
-      - MYSQL_ROOT_PASSWORD=root_password
-    restart: always
+    volumes:
+      - ./data/db:/var/lib/mysql
 
-  redis:
-    image: redis:alpine
-    container_name: pterodactyl_redis
-    restart: always
+  wings:
+    image: ghcr.io/pterodactyl/wings:latest
+    ports:
+      - "8080:8080"
+      - "2022:2022"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./data/wings:/var/lib/pterodactyl
+      
