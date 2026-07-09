@@ -43,21 +43,14 @@ jobs:
 
       - name: Jalankan Pterodactyl & Wings (Auto Setup)
         run: |
+          # Ini akan otomatis menunggu sampai database benar-benar SEHAT baru menjalankan panel
           docker-compose up -d
           
           if [ ! -f backup.tar.gz ]; then
-            echo "Mengecek kesiapan database MariaDB secara berkala..."
+            echo "Database dan Panel siap! Memberikan jeda 5 detik untuk memastikan port web terbuka..."
+            sleep 5
             
-            # Ini perintah krusial untuk menahan skrip sampai database benar-benar aktif
-            until docker-compose exec -T database mysqladmin ping -h "127.0.0.1" -u pterodactyl -prahasia_ptero --silent; do
-                echo "Database belum siap merespons, menunggu 5 detik..."
-                sleep 5
-            done
-            
-            echo "Database terdeteksi aktif! Memberi jeda stabilisasi 10 detik..."
-            sleep 10
-            
-            echo "Memulai migrasi struktur database..."
+            echo "Menjalankan migrasi struktur database..."
             docker-compose exec -T panel php artisan migrate --seed --force
             
             echo "Membuat akun Admin otomatis..."
@@ -66,8 +59,9 @@ jobs:
             echo "Instalasi awal sukses besar!"
           else
             echo "Backup ditemukan, memulihkan data lama."
-            sleep 15
+            sleep 10
           fi
+          
 
       - name: Server Aktif (Timer 5 Jam)
         run: |
